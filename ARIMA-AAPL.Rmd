@@ -1,0 +1,98 @@
+---
+title: "ARIMA-AAPL"
+author: "Jialiang Liu"
+date: "2022-12-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 
+
+```{r }
+library(readxl)
+library(quantmod)
+library(ggplot2)
+library(forecast)
+library(tseries)
+library(rugarch)
+setwd("C:/Users/LJL/Desktop/AS Term3/Stat method in Finance/project")
+```
+
+```{r}
+AAPL_raw = read.csv("AAPL.csv")
+```
+
+```{r}
+dates <- AAPL_raw[,1]
+prices <- AAPL_raw[,6]
+AAPL <- matrix(1:1259,nrow=1259,ncol=1)
+row.names(AAPL) <- dates
+AAPL[,1] <- prices
+
+#将数据处理为时间序列数据
+AAPL_ts <- ts(AAPL)
+autoplot(AAPL_ts,ylab="price") #画图
+ggtsdisplay(AAPL_ts) #可看到ACF与PACF
+Box.test(AAPL_ts, type="Ljung-Box")  #LB检验
+adf.test(AAPL_ts )  #ADF检验
+
+#将数据分为两个部分，一部分用来做预测，一部分用来做对比
+AAPL_train <- window(AAPL_ts, end=1200)
+AAPL_test <- window(AAPL_ts, star=1201,end=1259)
+chartSeries(AAPL_ts,TA = NULL)
+```
+
+```{r}
+#序列检验
+diffAAPL <- diff(AAPL_train)
+adf.test(diffAAPL )
+ggtsdisplay(diffAAPL)
+```
+
+```{r}
+#拟合
+fittrain  <- auto.arima(AAPL_train)
+checkresiduals(fittrain)
+fittrain
+```
+
+```{r}
+#预测
+plot(forecast(fittrain,h=59))
+lines(AAPL_test,col="red")
+```
+
+```{r}
+#accuracy
+forecast <- data.frame(forecast(fittrain,h=59),AAPL_test)
+forecast$acc80=0
+forecast$acc95=0
+for (i in 1:59){
+  if(forecast[i,2]<=forecast[i,6]&forecast[i,3]>=forecast[i,6]){
+    forecast[i,7]=1
+  }
+    if(forecast[i,4]<=forecast[i,6]&forecast[i,5]>=forecast[i,6]){
+    forecast[i,8]=1
+  }
+}
+sum(forecast[,7])/59
+sum(forecast[,8])/59
+forecast
+```
+
+```{r}
+#全样本预测
+fit  <- auto.arima(AAPL_ts)
+plot(forecast(fit,h=42))
+```
+
+```{r}
+library(tsfknn)
+df <- data.frame(ds = index(AAPL_train), y = as.numeric(AAPL_train))
+predknn <- knn_forecasting(df$y,h =259,lags = 1:50, k = 30,msas = "MIMO")
+plot(predknn)
+lines(AAPL_test,col="red")
+```

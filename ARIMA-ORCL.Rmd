@@ -1,0 +1,98 @@
+---
+title: "ARIMA-ORCL"
+author: "Jialiang Liu"
+date: "2022-12-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 
+
+```{r }
+library(readxl)
+library(quantmod)
+library(ggplot2)
+library(forecast)
+library(tseries)
+library(rugarch)
+setwd("C:/Users/LJL/Desktop/AS Term3/Stat method in Finance/project")
+```
+
+```{r}
+ORCL_raw = read.csv("ORCL.csv")
+```
+
+```{r}
+dates <- ORCL_raw[,1]
+prices <- ORCL_raw[,6]
+ORCL <- matrix(1:1259,nrow=1259,ncol=1)
+row.names(ORCL) <- dates
+ORCL[,1] <- prices
+
+#将数据处理为时间序列数据
+ORCL_ts <- ts(ORCL)
+autoplot(ORCL_ts,ylab="price") #画图
+ggtsdisplay(ORCL_ts) #可看到ACF与PACF
+Box.test(ORCL_ts, type="Ljung-Box")  #LB检验
+adf.test(ORCL_ts )  #ADF检验
+
+#将数据分为两个部分，一部分用来做预测，一部分用来做对比
+ORCL_train <- window(ORCL_ts, end=1200)
+ORCL_test <- window(ORCL_ts, star=1201,end=1259)
+chartSeries(ORCL_ts,TA = NULL)
+```
+
+```{r}
+#序列检验
+diffORCL <- diff(ORCL_train)
+adf.test(diffORCL )
+ggtsdisplay(diffORCL)
+```
+
+```{r}
+#拟合
+fittrain  <- auto.arima(ORCL_train)
+checkresiduals(fittrain)
+fittrain
+```
+
+```{r}
+#预测
+plot(forecast(fittrain,h=59))
+lines(ORCL_test,col="red")
+```
+
+```{r}
+#accuracy
+forecast <- data.frame(forecast(fittrain,h=59),ORCL_test)
+forecast$acc80=0
+forecast$acc95=0
+for (i in 1:59){
+  if(forecast[i,2]<=forecast[i,6]&forecast[i,3]>=forecast[i,6]){
+    forecast[i,7]=1
+  }
+    if(forecast[i,4]<=forecast[i,6]&forecast[i,5]>=forecast[i,6]){
+    forecast[i,8]=1
+  }
+}
+sum(forecast[,7])/59
+sum(forecast[,8])/59
+forecast
+```
+
+```{r}
+#全样本预测
+fit  <- auto.arima(ORCL_ts)
+plot(forecast(fit,h=42))
+```
+
+```{r}
+library(tsfknn)
+df <- data.frame(ds = index(ORCL_train), y = as.numeric(ORCL_train))
+predknn <- knn_forecasting(df$y,h =259,lags = 1:50, k = 30,msas = "MIMO")
+plot(predknn)
+lines(ORCL_test,col="red")
+```
