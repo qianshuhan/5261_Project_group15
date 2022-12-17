@@ -1,0 +1,166 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+```{r}
+library(readr)
+library(quantmod)
+library(xts)
+library(PerformanceAnalytics)
+library(rugarch)
+library(FinTS)
+library(e1071)
+library(tseries)
+library(rmgarch)
+```
+
+```{r}
+startDate = as.Date("2017-11-27") 
+endDate = as.Date("2022-11-25")
+getSymbols("AAPL", from = startDate, to = endDate)
+```
+
+```{r}
+chartSeries(AAPL)
+```
+```{r}
+# Daily returns
+return_AAPL <- CalculateReturns(AAPL$AAPL.Adjusted)
+return_AAPL <- return_AAPL[-1]
+chartSeries(return_AAPL, theme = 'white')
+chart.Histogram(return_AAPL,
+                methods = c('add.density','add.normal'),
+                colorset = c('blue','green','red'))
+# Green line is higher than normal distribution (red line). Hence, student t distribution (heavier tail) would be more suitable for model
+```
+
+
+```{r}
+AAPL_garch_1 <- ugarchspec(mean.model = list(armaOrder=c(0,1)),
+                          variance.model = list(model = 'sGARCH',
+                                                garchOrder = c(1,1)),
+                          distribution = 'std') # standard GARCH model
+AAPL_fit_garch_1 <- ugarchfit(spec = AAPL_garch_1,
+                              data = na.omit(return_AAPL))
+#infocriteria(AAPL_fit_garch_1)
+AAPL_fit_garch_1
+#coef(AAPL_fit_garch_1)
+```
+
+```{r}
+AAPL_garch_2 <- ugarchspec(mean.model = list(armaOrder = c(0,1)),
+                           variance.model = list(model = "sGARCH",
+                                                 garchOrder = c(1,2)),
+                           distribution = 'std')
+AAPL_fit_garch_2 <- ugarchfit(spec = AAPL_garch_2,
+                              data = na.omit(return_AAPL))
+# AAPL_fit_garch_2
+infocriteria(AAPL_fit_garch_2)
+#coef(AAPL_fit_garch_2)
+```
+
+```{r}
+AAPL_garch_11 <- ugarchspec(mean.model = list(armaOrder=c(0,0)),
+                          variance.model = list(model = 'sGARCH', 
+                                                garchOrder = c(1,1)),
+                          distribution = 'std') 
+AAPL_fit_garch_11 <- ugarchfit(spec = AAPL_garch_11,
+                              data = na.omit(return_AAPL))
+infocriteria(AAPL_fit_garch_11)
+#AAPL_fit_garch_11
+#coef(AAPL_fit_garch_11)
+```
+
+```{r}
+AAPL_garch_3 <- ugarchspec(mean.model = list(armaOrder=c(0,1)),
+                           variance.model = list(model = 'sGARCH', 
+                                                 garchOrder = c(1,3)),
+                           distribution = 'std')
+
+AAPL_fit_garch_3 <- ugarchfit(spec = AAPL_garch_3, data = na.omit(return_AAPL))
+#AAPL_fit_garch_3
+infocriteria(AAPL_fit_garch_3)
+#coef(AAPL_fit_garch_3)
+```
+
+```{r}
+AAPL_garch_4 <- ugarchspec(mean.model = list(armaOrder=c(0,01)),
+                           variance.model = list(model = 'sGARCH', 
+                                                 garchOrder = c(2,1)),
+                           distribution = 'std')
+
+AAPL_fit_garch_4 <- ugarchfit(spec = AAPL_garch_4, data = na.omit(return_AAPL))
+#AAPL_fit_garch_4
+infocriteria(AAPL_fit_garch_4)
+#coef(AAPL_fit_garch_4)
+```
+```{r}
+AAPL_garch_5 <- ugarchspec(mean.model = list(armaOrder=c(0,1)),
+                           variance.model = list(model = 'sGARCH', 
+                                                 garchOrder = c(2,2)),
+                           distribution = 'std')
+
+AAPL_fit_garch_5 <- ugarchfit(spec = AAPL_garch_5, data = na.omit(return_AAPL))
+#AAPL_fit_garch_5
+infocriteria(AAPL_fit_garch_5)
+#coef(AAPL_fit_garch_5)
+```
+
+
+```{r}
+AAPL_forecast <- ugarchforecast(AAPL_fit_garch_11,
+                                 data = na.omit(return_AAPL),
+                                 n.ahead = 20)
+AAPL_forecast
+```
+
+```{r}
+AAPL_fit_roll <- ugarchfit(AAPL_garch_11,
+                           data = na.omit(return_AAPL),
+                           out.sample = 500)
+AAPL_fore_roll <- ugarchforecast(AAPL_fit_roll, 
+                                 n.ahead = 20,
+                                 n.roll=50)
+AAPL_fore_roll
+par(mfrow = c(1,2))
+plot(AAPL_fore_roll, which=1)
+plot(AAPL_fore_roll, which=2)
+plot(AAPL_fore_roll, which='all')
+```
+
+
+```{r}
+# We chose model with lowest AIC and Information Criteria
+s <- AAPL_garch_11
+m <- AAPL_fit_garch_11
+#Merge parameter
+sfinal <- s
+setfixed(sfinal) <- as.list(coef(m))
+
+f2021 <- ugarchforecast(data = na.omit(return_AAPL["/2021-12"]),
+                        fitORspec = sfinal,
+                        n.ahead = 252)
+f2022 <- ugarchforecast(data = na.omit(return_AAPL["/2022-12"]),
+                        fitORspec = sfinal,
+                        n.ahead = 252)
+#Forecasting future variance
+par(mfrow=c(1,1))
+plot(sigma(f2021))
+plot(sigma(f2022))
+
+sim <- ugarchpath(spec = sfinal,
+                  m.sim = 3,
+                  n.sim = 1*252,
+                  rseed = 123)
+plot.zoo(fitted(sim))
+plot.zoo(sigma(sim))
+p <- 150.04	*apply(fitted(sim),2,'cumsum')+150.04	
+matplot(p, type = "l", lwd=3)
+```
+
+
+
+
